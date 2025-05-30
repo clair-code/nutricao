@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 from enum import Enum
-from typing import Union  # Correto (com 'U' maiúsculo)
+from typing import *
 import json
 
 # --- CONSTANTES E ENUMS ---
