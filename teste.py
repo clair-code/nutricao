@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Dict, Union
+from typing import Optional, Dict, union
 import json
 
 # --- CONSTANTES E ENUMS ---
@@ -1116,7 +1116,7 @@ def main():
     
     # Rodapé
     st.markdown("---")
-    st.caption("© 2023 Calculadora Nutricional - Desenvolvido para profissionais de saúde")
+    st.caption("© 2025 Calculadora Nutricional - Desenvolvido para profissionais de saúde")
 
 if __name__ == "__main__":
     main()
