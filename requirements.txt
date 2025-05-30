@@ -1,0 +1,9 @@
+# Dependências principais
+streamlit>=1.22.0
+pandas>=1.5.0
+plotly>=5.11.0
+numpy>=1.24.0
+
+# Dependências indiretas (às vezes necessárias)
+typing-extensions>=4.0.0
+importlib-metadata>=4.0.0
