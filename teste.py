@@ -210,12 +210,17 @@ def calcular_requerimento_energetico_completo(peso: float, estatura: float, idad
 # 7. CORREÇÃO DE PREMATURIDADE
 def calcular_idade_corrigida(idade_cronologica_meses: float, 
                            idade_gestacional_semanas: float) -> float:
-    """Correção de idade para prematuros até 2 anos."""
+    """Correção de idade para prematuros até 2 anos.
+    Fórmula: IC = idade cronológica (meses) - (40 - IG em semanas) / 4.34524
+    """
     if idade_gestacional_semanas < 20 or idade_gestacional_semanas > 42:
         raise ValueError("Idade gestacional deve estar entre 20-42 semanas")
     
-    idade_gestacional_meses = idade_gestacional_semanas / 4.34524
-    return idade_cronologica_meses - (40 / 4.34524 - idade_gestacional_meses)
+    # Semanas de prematuridade = 40 - idade gestacional
+    semanas_prematuridade = 40 - idade_gestacional_semanas
+    # Converter semanas para meses (1 mês ≈ 4.34524 semanas)
+    meses_correcao = semanas_prematuridade / 4.34524
+    return idade_cronologica_meses - meses_correcao
 
 # 8. PACIENTE COM PC ENFERMO (×1.1)
 def necessidade_energetica_pc_enfermo(peso: float, altura_cm: float, 
@@ -361,27 +366,40 @@ def calcular_percentual_gordura(soma_dobras: float, sexo: Sexo,
 # 18. CIRCUNFERÊNCIA MUSCULAR DO BRAÇO (CMB)
 def calcular_circ_muscular_braco(perimetro_braco: float, 
                                dobra_tricipital: float) -> float:
-    """Calcula a circunferência muscular do braço."""
+    """Calcula a circunferência muscular do braço.
+    Fórmula: CMB (cm) = CB (cm) - π × DCT (cm)
+    Ambas as medidas devem ser em cm.
+    """
     if perimetro_braco <= 0 or dobra_tricipital <= 0:
         raise ValueError("Medidas devem ser positivas")
-    return perimetro_braco - (0.314 * (dobra_tricipital / 10))
+    # dobra_tricipital esperada em mm, converter para cm
+    dobra_cm = dobra_tricipital / 10
+    return perimetro_braco - (3.14159 * dobra_cm)
 
 # 19. ÁREA MUSCULAR DO BRAÇO (AMB)
 def calcular_area_muscular_braco(circunferencia_braco: float, 
                                dobra_tricipital: float) -> float:
-    """Calcula a área muscular do braço."""
+    """Calcula a área muscular do braço.
+    Fórmula: AMB (cm²) = (CB - π × DCT)² / (4 × π)
+    CB em cm, DCT em mm (será convertida internamente)
+    """
     if circunferencia_braco <= 0 or dobra_tricipital <= 0:
         raise ValueError("Medidas devem ser positivas")
     dobra_cm = dobra_tricipital / 10
-    return ((circunferencia_braco - 0.314 * dobra_cm) ** 2) / 12.56
+    cmb = circunferencia_braco - (3.14159 * dobra_cm)
+    return (cmb ** 2) / (4 * 3.14159)
 
 # 20. ÁREA GORDA DO BRAÇO (AGB)
 def calcular_area_gorda_braco(circunferencia_braco: float, 
                             area_muscular_braco: float) -> float:
-    """Calcula a área gorda do braço."""
+    """Calcula a área gorda do braço.
+    Fórmula: AGB (cm²) = Área Total do Braço - AMB
+    Área total = CB² / (4 × π)
+    """
     if circunferencia_braco <= 0 or area_muscular_braco <= 0:
         raise ValueError("Medidas devem ser positivas")
-    return 0.79 * ((circunferencia_braco / 3.14) ** 2) - area_muscular_braco
+    area_total = (circunferencia_braco ** 2) / (4 * 3.14159)
+    return area_total - area_muscular_braco
 
 # 21. ESTIMATIVA DE ESTATURA PC (2-12 ANOS)
 def estimar_estatura_paralisia_cerebral(comprimento_superior: float, 
@@ -473,10 +491,13 @@ def necessidade_sindrome_down(altura: float, sexo: Sexo) -> float:
 # 29. NECESSIDADES NUTRICIONAIS PC (COM FATOR ESTRESSE)
 def calcular_necessidade_pc(peso: float, altura: float, sexo: Sexo, 
                            idade: float, fator_estresse: float) -> Optional[float]:
-    """Calcula necessidades nutricionais para paralisia cerebral."""
+    """Calcula necessidades nutricionais para paralisia cerebral.
+    Usa equação de Schofield (peso+estatura) com fator de estresse.
+    """
     if peso <= 0 or altura <= 0 or idade < 0 or fator_estresse <= 0:
         return None
     
+    base: Optional[float] = None
     if sexo == Sexo.FEMININO:
         if idade <= 3:
             base = 16.25 * peso + 1023.2 * altura - 413.5
@@ -491,6 +512,9 @@ def calcular_necessidade_pc(peso: float, altura: float, sexo: Sexo,
             base = 19.6 * peso + 130.3 * altura + 414.9
         elif idade <= 18:
             base = 16.25 * peso + 137.2 * altura + 515.5
+    
+    if base is None:
+        return None  # Idade fora da faixa suportada (>18 anos)
     return base * fator_estresse
 
 # 30. GEB CRÍTICA
@@ -843,27 +867,59 @@ def main():
                 # Tabela de referência
                 with st.expander("📊 Tabela de Classificação (OMS)"):
                     if "peso_idade" in indice:
-                        df = pd.DataFrame({
-                            'Classificação': ['Muito baixo peso', 'Baixo peso', 'Peso adequado', 
-                                            'Peso adequado (risco)', 'Peso elevado', 'Obesidade'],
-                            'Percentil': ['<0,1', '≥0,1 e <3', '≥3 e <85', '>85 e ≤97', '>97 e ≤99,9', '>99,9'],
-                            'Escore Z': ['<-3', '≥-3 e <-2', '≥-2 e ≤+1', '>+1 e ≤+2', '>+2 e ≤+3', '>+3']
-                        })
-                    elif "peso_estatura" in indice or "imc_idade" in indice:
-                        df = pd.DataFrame({
-                            'Classificação': ['Magreza acentuada', 'Magreza', 'Eutrofia', 
-                                            'Risco de sobrepeso', 'Sobrepeso', 'Obesidade'],
-                            'Percentil': ['<0,1', '≥0,1 e <3', '≥3 e <85', '≥85 e ≤97', '>97 e ≤99,9', '>99,9'],
-                            'Escore Z': ['<-3', '≥-3 e <-2', '≥-2 e ≤+1', '>+1 e ≤+2', '>+2 e ≤+3', '>+3']
-                        })
+                        st.markdown("""
+                        **Peso para Idade**
+                        | Percentil | Escore Z | Classificação |
+                        | :--- | :--- | :--- |
+                        | <span style="color:red">&lt;0,1</span> | <span style="color:red">&lt;-3</span> | <span style="color:red">Muito baixo peso para a idade</span> |
+                        | <span style="color:red">≥0,1 e &lt;3</span> | <span style="color:red">≥-3 e &lt;-2</span> | Baixo peso para a idade |
+                        | <span style="color:red">≥3 e &lt;15</span> | <span style="color:red">≥-2 e &lt;-1</span> | Peso adequado para a idade |
+                        | <span style="color:red">≥15 e ≤85</span> | <span style="color:red">≥-1 e ≤+1</span> | - |
+                        | <span style="color:red">&gt;85 e ≤97</span> | <span style="color:red">&gt;+1 e ≤+2</span> | - |
+                        | <span style="color:red">&gt;97 e ≤99,9</span> | <span style="color:red">&gt;+2 e ≤+3</span> | Peso elevado para a idade |
+                        | <span style="color:red">&gt;99,9</span> | <span style="color:red">&gt;+3</span> | - |
+                        """, unsafe_allow_html=True)
+                    elif "peso_estatura" in indice:
+                        st.markdown("""
+                        **Peso para Estatura**
+                        | Percentil | Escore Z | Classificação |
+                        | :--- | :--- | :--- |
+                        | <span style="color:red">&lt;0,1</span> | <span style="color:red">&lt;-3</span> | <span style="color:red">Magreza acentuada</span> |
+                        | <span style="color:red">≥0,1 e &lt;3</span> | <span style="color:red">≥-3 e &lt;-2</span> | Magreza |
+                        | <span style="color:red">≥3 e &lt;15</span> | <span style="color:red">≥-2 e &lt;-1</span> | Eutrofia |
+                        | <span style="color:red">≥15 e ≤85</span> | <span style="color:red">≥-1 e ≤+1</span> | Risco de sobrepeso |
+                        | <span style="color:red">&gt;85 e ≤97</span> | <span style="color:red">&gt;+1 e ≤+2</span> | - |
+                        | <span style="color:red">&gt;97 e ≤99,9</span> | <span style="color:red">&gt;+2 e ≤+3</span> | Sobrepeso |
+                        | <span style="color:red">&gt;99,9</span> | <span style="color:red">&gt;+3</span> | <span style="color:red">Obesidade</span> |
+                        """, unsafe_allow_html=True)
+                    elif "imc_idade" in indice:
+                        st.markdown("""
+                        **IMC para Idade**
+                        | Percentil | Escore Z | Classificação |
+                        | :--- | :--- | :--- |
+                        | <span style="color:red">&lt;0,1</span> | <span style="color:red">&lt;-3</span> | <span style="color:red">Magreza acentuada</span> |
+                        | <span style="color:red">≥0,1 e &lt;3</span> | <span style="color:red">≥-3 e &lt;-2</span> | Magreza |
+                        | <span style="color:red">≥3 e &lt;15</span> | <span style="color:red">≥-2 e &lt;-1</span> | Eutrofia |
+                        | <span style="color:red">≥15 e ≤85</span> | <span style="color:red">≥-1 e ≤+1</span> | Risco de sobrepeso |
+                        | <span style="color:red">&gt;85 e ≤97</span> | <span style="color:red">&gt;+1 e ≤+2</span> | - |
+                        | <span style="color:red">&gt;97 e ≤99,9</span> | <span style="color:red">&gt;+2 e ≤+3</span> | Sobrepeso |
+                        | <span style="color:red">&gt;99,9</span> | <span style="color:red">&gt;+3</span> | <span style="color:red">Obesidade</span> |
+                        """, unsafe_allow_html=True)
                     else:  # estatura_idade
-                        df = pd.DataFrame({
-                            'Classificação': ['Muito baixa estatura', 'Baixa estatura', 'Estatura adequada'],
-                            'Percentil': ['<0,1', '≥0,1 e <3', '≥3'],
-                            'Escore Z': ['<-3', '≥-3 e <-2', '≥-2']
-                        })
+                        st.markdown("""
+                        **Estatura para Idade**
+                        | Percentil | Escore Z | Classificação |
+                        | :--- | :--- | :--- |
+                        | <span style="color:red">&lt;0,1</span> | <span style="color:red">&lt;-3</span> | <span style="color:red">Muito baixa estatura para a idade</span> |
+                        | <span style="color:red">≥0,1 e &lt;3</span> | <span style="color:red">≥-3 e &lt;-2</span> | Baixa estatura para a idade |
+                        | <span style="color:red">≥3 e &lt;15</span> | <span style="color:red">≥-2 e &lt;-1</span> | Estatura adequada para a idade |
+                        | <span style="color:red">≥15 e ≤85</span> | <span style="color:red">≥-1 e ≤+1</span> | - |
+                        | <span style="color:red">&gt;85 e ≤97</span> | <span style="color:red">&gt;+1 e ≤+2</span> | - |
+                        | <span style="color:red">&gt;97 e ≤99,9</span> | <span style="color:red">&gt;+2 e ≤+3</span> | - |
+                        | <span style="color:red">&gt;99,9</span> | <span style="color:red">&gt;+3</span> | - |
+                        """, unsafe_allow_html=True)
                     
-                    st.dataframe(df, use_container_width=True, hide_index=True)
+                    # Tabela renderizada via markdown html substituindo dataframe
             
             else:
                 st.error("❌ Não foi possível classificar. Verifique os valores inseridos.")
@@ -936,9 +992,25 @@ def main():
             
             st.markdown("""
             <div class="info-box">
-            <strong>Diferenças:</strong><br>
-            • <strong style="color:#ff69b4">Rosa:</strong> 54.48 × Peso - 30.33 (M 0-3 anos)<br>
-            • <strong style="color:#28a745">Verde:</strong> 0.167 × Peso + 1517.4 × Estatura - 617.6 (M 0-3 anos)
+            <strong style="color:pink">Taxa metabólico basal PESO</strong><br>
+            <em>Masculino:</em><br>
+            • 0 a 3 anos: TMB = (54,48 × P) - 30,33<br>
+            • 3 a 10 anos: TMB = (22,7 × P) + 505<br>
+            • 10 a 18 anos: TMB = (13,4 × P) + 693<br>
+            <em>Feminino:</em><br>
+            • 0 a 3 anos: TMB = (58,29 × P) - 31,05<br>
+            • 3 a 10 anos: TMB = (20,3 × P) + 486<br>
+            • 10 a 18 anos: TMB = (17,7 × P) + 659<br><br>
+            <strong style="color:green">Taxa metabólico basal PESO e ESTATURA</strong><br>
+            Legenda: P = peso (kg); E = estatura (m).<br>
+            <em>Masculino:</em><br>
+            • 0 a 3 anos: TMB = (0,167 × P) + (1517,4 × E) - 617,6<br>
+            • 3 a 10 anos: TMB = (19,6 × P) + (130,3 × E) + 414,9<br>
+            • 10 a 18 anos: TMB = (16,25 × P) + (137,2 × E) + 515,5<br>
+            <em>Feminino:</em><br>
+            • 0 a 3 anos: TMB = (16,25 × P) + (1023,2 × E) - 413,5<br>
+            • 3 a 10 anos: TMB = (16,97 × P) + (161,8 × E) + 371,2<br>
+            • 10 a 18 anos: TMB = (8,365 × P) + (465 × E) + 200
             </div>
             """, unsafe_allow_html=True)
         
@@ -1065,14 +1137,16 @@ def main():
                     """, unsafe_allow_html=True)
                     
                     # Tabela de referência
-                    with st.expander("📋 Tabela de Referência"):
-                        df = pd.DataFrame({
-                            'Faixa Etária': ['0-3 meses', '4-6 meses', '7-12 meses', '13-35 meses'],
-                            'Fórmula': ['(89×P-100)+175', '(89×P-100)+56', '(89×P-100)+22', '(89×P-100)+20'],
-                            'Exemplo (8kg)': ['(89×8-100)+175 = 787', '(89×8-100)+56 = 668', 
-                                            '(89×8-100)+22 = 634', '(89×8-100)+20 = 632']
-                        })
-                        st.dataframe(df, use_container_width=True, hide_index=True)
+                    with st.expander("📋 Fórmulas de Referência"):
+                        st.markdown("""
+                        <div style="color:black">
+                        <strong>Gasto Energético de Idade (meses)</strong> <em>(Considera apenas o Peso)</em><br>
+                        • 0 a 3 meses: ERE = [89 × P(kg) - 100] + 175<br>
+                        • 4 a 6 meses: ERE = [89 × P(kg) - 100] + 56<br>
+                        • 7 a 12 meses: ERE = [89 × P(kg) - 100] + 22<br>
+                        • 13 a 35 meses: ERE = [89 × P(kg) - 100] + 20
+                        </div>
+                        """, unsafe_allow_html=True)
         
         # 3-18 ANOS
         else:
@@ -1152,6 +1226,19 @@ def main():
                         <p><strong>Detalhes:</strong> {sexo}, {idade_anos:.1f} anos, {peso:.1f} kg, {estatura:.2f} m</p>
                     </div>
                     """, unsafe_allow_html=True)
+                    
+                    # Fórmulas de referência
+                    with st.expander("📋 Fórmulas de Referência"):
+                        st.markdown("""
+                        <strong style="color:pink">Gasto Energético de Idade (3 a 8 anos) MENINA</strong> <em>(Considera Idade, Peso, Estatura e Fator de atividade)</em><br>
+                        • ERE = 135,3 - 30,8 × idade(anos) + AF × [10 × P(kg) + 934 × E(m)] + 20<br><br>
+                        <strong style="color:blue">Gasto Energético de Idade (3 a 8 anos) MENINO</strong> <em>(Considera Idade, Peso, Estatura e Fator de atividade)</em><br>
+                        • ERE = 88,5 - 61,9 × idade(anos) + AF × [26,7 × P(kg) + 903 × E(m)] + 20<br><br>
+                        <strong style="color:orange">Gasto Energético de Idade (9 a 18 anos) MENINO</strong> <em>(Considera Idade, Peso, Estatura e Fator de atividade)</em><br>
+                        • ERE = 88,5 - 61,9 × idade(anos) + AF × [26,7 × P(kg) + 903 × E(m)] + 25<br><br>
+                        <strong style="color:purple">Gasto Energético de Idade (9 a 18 anos) MENINA</strong> <em>(Considera Idade, Peso, Estatura e Fator de atividade)</em><br>
+                        • ERE = 135,3 - 30,8 × idade(anos) + AF × [10 × P(kg) + 934 × E(m)] + 25
+                        """, unsafe_allow_html=True)
                     
                     # Adicionar ao histórico
                     st.session_state.historico.append({
@@ -1472,18 +1559,20 @@ def main():
                 sexo_enum = Sexo.MASCULINO if sexo == "Masculino" else Sexo.FEMININO
                 resultado = necessidade_energetica_pc_enfermo(peso, altura_cm, idade, sexo_enum)
                 
-                # Calcular base
+                # Calcular base para exibição do texto
                 if sexo == "Masculino":
                     base = 66.5 + (13.75 * peso) + (5.003 * altura_cm) - (6.775 * idade)
+                    formula = f"Necessidade Energética = 66.5 + (13.75 × {peso}) + (5.003 × {altura_cm}) - (6.775 × {idade}) = {base:.0f} kcal"
                 else:
                     base = 65.1 + (9.56 * peso) + (1.85 * altura_cm) - (4.676 * idade)
+                    formula = f"Necessidade Energética = 65.1 + (9.56 × {peso}) + (1.85 × {altura_cm}) - (4.676 × {idade}) = {base:.0f} kcal"
                 
                 st.markdown(f"""
                 <div class="result-box">
                     <h2>🏥 Necessidade Energética PC Enfermo</h2>
                     <h1 style="color:#FF6B6B">{resultado:.0f} kcal/dia</h1>
-                    <p><strong>Cálculo:</strong> {base:.0f} × 1.1 = {resultado:.0f}</p>
-                    <p><strong>Fator de estresse:</strong> 1.1</p>
+                    <p><strong>{sexo}:</strong> {formula}</p>
+                    <p><strong>Kcal/dia (PC Enfermo):</strong> Necessidade Energética × 1.1 = {resultado:.0f}</p>
                 </div>
                 """, unsafe_allow_html=True)
         
@@ -1633,7 +1722,7 @@ def main():
                     <div class="result-box">
                         <h2>🏥 Gasto Energético Basal (UTI)</h2>
                         <h1 style="color:#FF6B6B">{resultado:.0f} kcal/dia</h1>
-                        <p><strong>Fórmula:</strong> [(17 × {idade_meses}) + (48 × {peso}) + (292 × {temperatura}) - 9677] × 0.239</p>
+                        <p><strong>Fórmula:</strong> GEB = [(17 × idade em meses) + (48 × peso em kg) + (292 × temperatura em graus Celsius) - 9677] × 0,239</p>
                     </div>
                     """, unsafe_allow_html=True)
                 except ValueError as e:
@@ -1669,8 +1758,9 @@ def main():
                     <h2>👶 Idade Corrigida para Prematuro</h2>
                     <h1 style="color:#00B894">{resultado:.1f} meses</h1>
                     <p><strong>Idade cronológica:</strong> {idade_cron:.1f} meses</p>
-                    <p><strong>Prematuridade:</strong> {prematuridade:.1f} semanas</p>
-                    <p><strong>Fórmula:</strong> {idade_cron:.1f} - (40 - {idade_gest:.1f}) / 4.34524</p>
+                    <p><strong>Idade gestacional:</strong> {idade_gest:.1f} semanas</p>
+                    <p><strong>Fórmula:</strong> Idade corrigida (IC) = idade cronológica - (40 - idade gestacional em semanas)</p>
+                    <p><small><em>Observação: A idade cronológica e a corrigida são calculadas em meses.</em></small></p>
                 </div>
                 """, unsafe_allow_html=True)
     
@@ -1687,29 +1777,28 @@ def main():
         with col1:
             tipo = st.selectbox(
                 "Parâmetro nutricional:",
-                ["🔥 Energia (kcal)", "🥩 Proteína (g)", "💧 Líquidos (ml)", "📋 Outro"]
+                ["🔥 GEB", "🥩 Proteína", "⚡ GET", "📋 Outro"]
             )
             
-            consumido = st.number_input(f"Valor Consumido", 
+            consumido = st.number_input(f"Valor Consumido/Alcançado", 
                                       min_value=0.0, 
                                       max_value=10000.0, 
                                       value=1500.0, 
                                       step=10.0)
         
         with col2:
-            necessidade = st.number_input(f"Necessidade/ Meta", 
+            necessidade = st.number_input(f"Necessidades Nutricionais", 
                                         min_value=0.1, 
                                         max_value=10000.0, 
                                         value=2000.0, 
                                         step=10.0)
             
-            st.info("""
-            **Interpretação:**
-            - ✅ 100%+: Meta alcançada
-            - ⚠️ 90-99%: Próximo da meta
-            - 🟠 70-89%: Atenção necessária
-            - ❌ <70%: Meta não alcançada
-            """)
+            st.markdown(f"""
+            <div class="info-box">
+            **% Alcançado:**<br>
+            {tipo.split(' ')[1] if ' ' in tipo else tipo} ----- 100 % &rarr; Necessidades nutricionais ----- x
+            </div>
+            """, unsafe_allow_html=True)
         
         if st.button("📈 Calcular % Alcançado", type="primary", use_container_width=True):
             try:
@@ -1981,6 +2070,56 @@ def main():
                         """, unsafe_allow_html=True)
                 except ValueError as e:
                     st.error(f"❌ {str(e)}")
+        
+        # ESTIMATIVAS DE ESTATURA PC
+        elif "Estimativas de Estatura PC" in calculo:
+            st.subheader("📐 Estimativas de Estatura para Paralisia Cerebral")
+            
+            tipo_estimativa = st.radio(
+                "Faixa Etária / Método:",
+                ["👶 Crianças (2-12 anos)", "🧒 Adolescentes (13-18 anos)"]
+            )
+            
+            if "Crianças" in tipo_estimativa:
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    comp_sup = st.number_input("Comp. Braço Superior (cm)", min_value=10.0, max_value=50.0, value=20.0, step=0.1)
+                with col2:
+                    comp_tibial = st.number_input("Comp. Tibial (cm)", min_value=10.0, max_value=50.0, value=25.0, step=0.1)
+                with col3:
+                    comp_joelho = st.number_input("Altura do Joelho (cm)", min_value=10.0, max_value=60.0, value=30.0, step=0.1)
+                    
+                if st.button("📐 Calcular Estatura (Crianças PC)", type="primary"):
+                    resultados = estimar_estatura_paralisia_cerebral(comp_sup, comp_tibial, comp_joelho)
+                    
+                    st.markdown(f"""
+                    <div class="result-box" style="border-left-color:#00B894">
+                        <h2>📐 Estaturas Estimadas (2-12 anos)</h2>
+                        <p><strong>Pelo Comprimento Tibial:</strong> <span style="color:#00B894; font-size:1.2em; font-weight:bold;">{resultados['Estimada_CT']:.1f} cm</span></p>
+                        <p><strong>Pelo Braço Superior:</strong> <span style="color:#00B894; font-size:1.2em; font-weight:bold;">{resultados['Estimada_CS']:.1f} cm</span></p>
+                        <p><strong>Pela Altura do Joelho:</strong> <span style="color:#00B894; font-size:1.2em; font-weight:bold;">{resultados['Estimada_CJ']:.1f} cm</span></p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                col1, col2 = st.columns(2)
+                with col1:
+                    idade = st.number_input("Idade (anos)", min_value=13.0, max_value=18.0, value=15.0, step=0.1)
+                    sexo = st.selectbox("Sexo", options=[s.value for s in Sexo])
+                with col2:
+                    comp_ulna = st.number_input("Comprimento da Ulna (cm)", min_value=10.0, max_value=40.0, value=25.0, step=0.1)
+                    
+                if st.button("📐 Calcular Estatura (Adolescentes PC)", type="primary"):
+                    sexo_enum = Sexo.MASCULINO if sexo == "Masculino" else Sexo.FEMININO
+                    resultado = estimar_estatura_paralisia_adolescente(idade, sexo_enum, comp_ulna)
+                    
+                    st.markdown(f"""
+                    <div class="result-box" style="border-left-color:#00B894">
+                        <h2>📐 Estatura Estimada (Adolescentes PC)</h2>
+                        <h1 style="color:#00B894">{resultado:.1f} cm</h1>
+                        <p><strong>Idade:</strong> {idade} anos | <strong>Sexo:</strong> {sexo} | <strong>Ulna:</strong> {comp_ulna} cm</p>
+                    </div>
+                    """, unsafe_allow_html=True)
     
     # ================================================
     # RODAPÉ
