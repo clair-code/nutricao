@@ -2142,7 +2142,7 @@ def main():
         st.caption("📊 **30 fórmulas implementadas**")
     
     with col3:
-        st.caption("© 2024 - Desenvolvido para profissionais de saúde")
+        st.caption("© 2026 - Desenvolvido para profissionais de saúde")
 
 if __name__ == "__main__":
     main()
